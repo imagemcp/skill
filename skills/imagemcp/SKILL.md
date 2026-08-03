@@ -1,14 +1,14 @@
 ---
 name: imagemcp
 description: >
-  Get user info/credits, list available image models, generate images, synthesize SVG vectors, remove backgrounds, upscale images, compress images, edit images, and convert format via ImageMCP Server. ALWAYS check user info/credits first.
-last-updated: 2026-08-02
+  Get user info/credits, list available image models, generate images, generate transparent images, execute multicall parallel requests, synthesize SVG vectors, remove backgrounds, upscale images, compress images, edit images, and convert format via ImageMCP Server. ALWAYS check user info/credits first.
+last-updated: 2026-08-03
 allowed-tools: Bash(./scripts/imagemcp.js:*)
 ---
 
 # ImageMCP Server Skill
 
-Fetch user info/credits, list models, generate images, synthesize vector SVGs, remove backgrounds, upscale images, compress image payload sizes, edit images, and convert formats using [ImageMCP Server](https://api.imagemcpserver.com). Run everything through `./scripts/imagemcp.js` (Node.js 18+, zero dependencies). All commands output structured JSON.
+Fetch user info/credits, list models, generate images, generate transparent images, execute multicall parallel requests, synthesize vector SVGs, remove backgrounds, upscale images, compress image payload sizes, edit images, and convert formats using [ImageMCP Server](https://api.imagemcpserver.com). Run everything through `./scripts/imagemcp.js` (Node.js 18+, zero dependencies). All commands output structured JSON.
 
 > **Authentication Flow & Setup**:
 > 1. `npx skills add web5lab/imagemcpserver` (Installs skill without prompting for tokens).
@@ -26,12 +26,14 @@ Fetch user info/credits, list models, generate images, synthesize vector SVGs, r
 1. **User Profile & Credit Inspection (`user:info`)**: Always check user profile details, plan, and credit balance first before initiating generation or edit tasks.
 2. **Model Listing (`models:list`)**: Access and inspect available OpenRouter and Fal.ai image models (including Google Gemini 2.5 Flash Image, Fal Recraft Vector, Fal Feynobg, Fal Crisp Upscaler, Flux 1.1 Pro, Recraft v3, Ideogram v2, SDXL Turbo, and more).
 3. **Text-to-Image Generation (`generate`)**: Synthesize high-resolution visual assets from natural language prompts with aspect ratio control (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`) and visual style presets.
-4. **Text to Vector SVG (`text_to_svg`)**: Generate clean, resolution-independent SVG vector graphics code using `fal-ai/recraft/v4.1/text-to-vector`.
-5. **Background Removal (`remove_bg`)**: Isolate subjects with transparent alpha PNG cutouts using `fal-ai/feynobg`.
-6. **Image Upscaling (`upscale`)**: Super-resolution 4K detail enhancement using `fal-ai/recraft/upscale/crisp`.
-7. **Image Compression (`compress`)**: Compress image byte payload size with quality control sliders (10%-95%) and format optimization.
-8. **Image Editing & Refinement (`edit`)**: Modify, update, or transform existing images by supplying an input image file or URL (`--image`) alongside edit instructions.
-9. **Format Conversion (`convert`)**: Convert image files across `PNG`, `JPG`, `WEBP`, `SVG`, `GIF`, and `BMP` formats.
+4. **Transparent Image Generation (`generate_transparent`)**: Synthesize an AI image from a prompt and automatically isolate the subject into a transparent PNG cutout using Fal.ai `fal-ai/feynobg`.
+5. **Parallel Multicall Execution (`multicall`)**: Execute multiple image generation/processing requests concurrently in parallel via OpenRouter & Fal.ai.
+6. **Text to Vector SVG (`text_to_svg`)**: Generate clean, resolution-independent SVG vector graphics code using `fal-ai/recraft/v4.1/text-to-vector`.
+7. **Background Removal (`remove_bg`)**: Isolate subjects with transparent alpha PNG cutouts using `fal-ai/feynobg`.
+8. **Image Upscaling (`upscale`)**: Super-resolution 4K detail enhancement using `fal-ai/recraft/upscale/crisp`.
+9. **Image Compression (`compress`)**: Compress image byte payload size with quality control sliders (10%-95%) and format optimization.
+10. **Image Editing & Refinement (`edit`)**: Modify, update, or transform existing images by supplying an input image file or URL (`--image`) alongside edit instructions.
+11. **Format Conversion (`convert`)**: Convert image files across `PNG`, `JPG`, `WEBP`, `SVG`, `GIF`, and `BMP` formats.
 
 ---
 
@@ -52,6 +54,8 @@ Only tools provided by ImageMCP Server are available. All commands return JSON f
 | "Check user plan / credits / info" | `./scripts/imagemcp.js user:info` |
 | "List available image models" | `./scripts/imagemcp.js models:list` |
 | "Generate image from prompt" | `./scripts/imagemcp.js generate --prompt "..." --model "google/gemini-2.5-flash-image" --aspect-ratio "16:9"` |
+| "Generate transparent image PNG cutout" | `./scripts/imagemcp.js generate_transparent --prompt "Red sports car" --out ./car.png` |
+| "Run multiple requests in parallel (Multicall)" | `./scripts/imagemcp.js multicall ./batch_requests.json` |
 | "Generate vector SVG graphic" | `./scripts/imagemcp.js text_to_svg --prompt "Minimalist rocket icon" --out ./icon.svg` |
 | "Generate image with input image (Image-to-Image)" | `./scripts/imagemcp.js generate --prompt "..." --image ./input.png --out output.png` |
 | "Edit existing image / Inpaint" | `./scripts/imagemcp.js edit --image ./input.png --prompt "..." --out edited.png` |
@@ -114,7 +118,7 @@ List all supported image generation models from OpenRouter with priority scores,
 
 ---
 
-### 2. Image Generation
+### 2. Image Generation & Transparency
 
 #### `generate` (alias: `image:generate`)
 Generate high quality images from text prompts using OpenRouter models.
@@ -141,7 +145,72 @@ Generate high quality images from text prompts using OpenRouter models.
 
 ---
 
+#### `generate_transparent` (alias: `transparent:generate`)
+Synthesize an AI image from a text prompt and automatically process background removal using `fal-ai/feynobg` to output a true transparent alpha PNG cutout.
+
+```bash
+# Generate a transparent PNG cutout of a product/object
+./scripts/imagemcp.js generate_transparent --prompt "Red vintage sports car isolated" --out ./car.png
+
+# Generate transparent image with specific aspect ratio and model
+./scripts/imagemcp.js generate_transparent --prompt "Futuristic robot mascot" --model "black-forest-labs/flux-1.1-pro" --aspect-ratio "1:1" --out ./robot.png
+```
+
+**Supported Flags:**
+- `--prompt "<text>"`: **(Required)** Detailed text prompt describing the image/subject.
+- `--file <filepath>`: Read prompt text from a file.
+- `--model <model_id>`: Target model ID (default: `google/gemini-2.5-flash-image`).
+- `--aspect-ratio <ratio>`: Aspect ratio (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`).
+- `--style <style_name>`: Desired visual style (`photorealistic`, `anime`, `vector`, `3d`, etc.).
+- `--out <filepath>`: Download and save the transparent PNG image output to a local file.
+
+---
+
+#### `multicall` (alias: `batch:generate`)
+Execute multiple image generation, transparent generation, background removal, SVG synthesis, or editing requests concurrently in parallel via OpenRouter & Fal.ai.
+
+```bash
+# Execute batch requests from a JSON file
+./scripts/imagemcp.js multicall ./batch_requests.json
+
+# Execute batch requests inline via JSON string flag
+./scripts/imagemcp.js multicall --json '[{"tool":"generate_image","args":{"prompt":"Cyberpunk street"}},{"tool":"generate_transparent_image","args":{"prompt":"Futuristic car"}}]'
+```
+
+**Sample Batch JSON File (`batch_requests.json`):**
+```json
+[
+  {
+    "tool": "generate_image",
+    "args": {
+      "prompt": "Neon cyberpunk city boulevard at night",
+      "aspectRatio": "16:9"
+    }
+  },
+  {
+    "tool": "generate_transparent_image",
+    "args": {
+      "prompt": "Sleek red sports car"
+    }
+  },
+  {
+    "tool": "text_to_svg",
+    "args": {
+      "prompt": "Minimalist rocket logo",
+      "style": "logo"
+    }
+  }
+]
+```
+
+**Supported Flags:**
+- `--file <filepath>` or positional arg: Path to a JSON file containing an array of request objects.
+- `--json '<json_str>'`: Inline JSON string containing the requests array.
+
+---
+
 ### 3. Image Editing & Refinement Endpoint
+
 
 #### `edit` (alias: `image:edit`)
 Edit, modify, or transform an existing generated image or input image by supplying an image path/URL and prompt instructions.

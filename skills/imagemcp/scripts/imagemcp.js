@@ -694,6 +694,102 @@ function setConfigUrl(url) {
   output({ success: true, message: 'API URL saved', savedTo: savedFile });
 }
 
+async function generateTransparent(rawArgs) {
+  const { flags } = parseFlags(rawArgs);
+
+  let prompt = flags.prompt || '';
+  if (flags.file) {
+    if (!fs.existsSync(flags.file)) {
+      error(`Prompt file not found: ${flags.file}`);
+    }
+    prompt = fs.readFileSync(flags.file, 'utf8').trim();
+  }
+
+  if (!prompt) {
+    error('Prompt is required. Use --prompt "<text>" or --file <path>');
+  }
+
+  const model = flags.model || flags['model-id'] || undefined;
+  const style = flags.style || 'photorealistic';
+  const aspectRatio = flags['aspect-ratio'] || flags.aspect || flags.ratio || '1:1';
+
+  const payload = {
+    prompt,
+    model,
+    style,
+    aspectRatio,
+  };
+
+  const resData = await apiRequest('/playground/generate-transparent', 'POST', payload, true);
+
+  if (flags.out && resData.success && resData.result?.imageUrl) {
+    const outPath = flags.out;
+    try {
+      const imgUrl = resData.result.imageUrl;
+      let buffer = null;
+
+      if (imgUrl.startsWith('data:')) {
+        const base64Data = imgUrl.split(',')[1];
+        buffer = Buffer.from(base64Data, 'base64');
+      } else {
+        const fetchRes = await fetch(imgUrl);
+        const arrayBuf = await fetchRes.arrayBuffer();
+        buffer = Buffer.from(arrayBuf);
+      }
+
+      fs.mkdirSync(path.dirname(path.resolve(outPath)), { recursive: true });
+      fs.writeFileSync(outPath, buffer);
+      resData.result.savedTo = path.resolve(outPath);
+    } catch (saveErr) {
+      resData.result.saveError = `Failed to download image to ${outPath}: ${saveErr.message}`;
+    }
+  }
+
+  output(resData);
+}
+
+async function multicall(rawArgs) {
+  const { flags, positional } = parseFlags(rawArgs);
+
+  let requests = [];
+
+  if (flags.file || positional[0]) {
+    const filePath = flags.file || positional[0];
+    if (fs.existsSync(filePath)) {
+      try {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(fileContent);
+        requests = Array.isArray(parsed) ? parsed : (parsed.requests || [parsed]);
+      } catch (e) {
+        error(`Failed to parse JSON file '${filePath}': ${e.message}`);
+      }
+    } else if (flags.json) {
+      try {
+        const parsed = JSON.parse(flags.json);
+        requests = Array.isArray(parsed) ? parsed : (parsed.requests || [parsed]);
+      } catch (e) {
+        error(`Failed to parse JSON string: ${e.message}`);
+      }
+    } else {
+      error(`Multicall JSON file not found: ${filePath}`);
+    }
+  } else if (flags.json || flags.requests) {
+    try {
+      const jsonStr = flags.json || flags.requests;
+      const parsed = JSON.parse(jsonStr);
+      requests = Array.isArray(parsed) ? parsed : (parsed.requests || [parsed]);
+    } catch (e) {
+      error(`Failed to parse JSON string: ${e.message}`);
+    }
+  } else {
+    error('Multicall requires a JSON file path or --file/--json flag containing requests array');
+  }
+
+  const payload = { requests };
+  const resData = await apiRequest('/playground/multicall', 'POST', payload, true);
+  output(resData);
+}
+
 function printHelp() {
   console.error(`
 ${colors.bold}${colors.cyan}===============================================================
@@ -723,7 +819,7 @@ ${colors.bold}CATEGORIZED COMMAND REFERENCE:${colors.reset}
         --out <filepath>       Save generated SVG file output (.svg)
       ${colors.dim}Example: ./scripts/imagemcp.js text_to_svg --prompt "Minimalist rocket icon" --out ./rocket.svg${colors.reset}
 
-  ${colors.bold}${colors.yellow}3. ✨ IMAGE GENERATION:${colors.reset}
+  ${colors.bold}${colors.yellow}3. ✨ IMAGE GENERATION & TRANSPARENCY:${colors.reset}
     ${colors.green}generate${colors.reset} (alias: ${colors.green}image:generate${colors.reset})
       Synthesize images from text prompts or input images.
       Flags:
@@ -736,16 +832,32 @@ ${colors.bold}CATEGORIZED COMMAND REFERENCE:${colors.reset}
         --out <filepath>       Save generated image output file
       ${colors.dim}Example: ./scripts/imagemcp.js generate --prompt "Cyberpunk city" --aspect-ratio 16:9 --out ./city.png${colors.reset}
 
+    ${colors.green}generate_transparent${colors.reset} (aliases: ${colors.green}transparent:generate${colors.reset}, ${colors.green}generate-transparent${colors.reset})
+      Synthesize AI image and automatically extract transparent PNG cutout via Fal.ai feynobg.
+      Flags:
+        --prompt "<text>"      Detailed prompt description (Required)
+        --model <model_id>     Target model ID
+        --aspect-ratio <ratio> Aspect ratio: 1:1, 16:9, 9:16, 4:3, 3:4, 21:9
+        --out <filepath>       Save transparent PNG output file
+      ${colors.dim}Example: ./scripts/imagemcp.js generate_transparent --prompt "Red vintage sports car" --out ./car.png${colors.reset}
+
+    ${colors.green}multicall${colors.reset} (alias: ${colors.green}batch:generate${colors.reset})
+      Execute multiple generation/processing requests concurrently in parallel.
+      Flags:
+        --file <path>          JSON file containing array of requests
+        --json '<json_str>'    JSON string containing requests array
+      ${colors.dim}Example: ./scripts/imagemcp.js multicall ./batch_requests.json${colors.reset}
+
   ${colors.bold}${colors.yellow}4. ✂️ PROCESSING & EDITING:${colors.reset}
     ${colors.green}remove_bg${colors.reset} (alias: ${colors.green}remove-bg${colors.reset})
-      Remove image backgrounds completely with transparent PNG cutouts using ${colors.cyan}fal-ai/feynobg${colors.reset}.
+      Isolate subject with transparent PNG background cutout.
       Flags:
         --image <path_or_url>  Target image path or URL (Required)
-        --out <filepath>       Save background-removed transparent PNG
-      ${colors.dim}Example: ./scripts/imagemcp.js remove_bg --image ./product.jpg --out ./product_clean.png${colors.reset}
+        --out <filepath>       Save background removed image file
+      ${colors.dim}Example: ./scripts/imagemcp.js remove_bg --image ./product.jpg --out ./cutout.png${colors.reset}
 
     ${colors.green}upscale${colors.reset} (alias: ${colors.green}image:upscale${colors.reset})
-      Upscale image resolution to 4K quality using ${colors.cyan}fal-ai/recraft/upscale/crisp${colors.reset}.
+      Enhance and upscale image resolution to 4K.
       Flags:
         --image <path_or_url>  Target image path or URL (Required)
         --scale <factor>       Scale factor: 2x, 4x, 8x (default: 4x)
@@ -817,6 +929,18 @@ async function main() {
       case 'generate':
       case 'image:generate':
         await generateImage(commandArgs);
+        break;
+
+      case 'generate_transparent':
+      case 'generate-transparent':
+      case 'transparent:generate':
+        await generateTransparent(commandArgs);
+        break;
+
+      case 'multicall':
+      case 'batch:generate':
+      case 'multicall:execute':
+        await multicall(commandArgs);
         break;
 
       case 'text_to_svg':
