@@ -258,6 +258,36 @@ async function listModels() {
 }
 
 
+function parseReferenceImages(flags) {
+  const refs = [];
+  const rawValues = [];
+  if (flags.ref) {
+    if (Array.isArray(flags.ref)) rawValues.push(...flags.ref);
+    else rawValues.push(flags.ref);
+  }
+  if (flags['reference-image']) rawValues.push(flags['reference-image']);
+  if (flags['reference-images']) {
+    if (typeof flags['reference-images'] === 'string') {
+      rawValues.push(...flags['reference-images'].split(','));
+    }
+  }
+
+  for (const item of rawValues) {
+    const trimmed = String(item).trim();
+    if (!trimmed) continue;
+    if (fs.existsSync(trimmed)) {
+      const buffer = fs.readFileSync(trimmed);
+      const ext = path.extname(trimmed).replace('.', '').toLowerCase() || 'png';
+      refs.push(`data:image/${ext};base64,${buffer.toString('base64')}`);
+    } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+      refs.push(trimmed);
+    } else {
+      error(`Reference image file not found: ${trimmed}`);
+    }
+  }
+  return refs.length > 0 ? refs : undefined;
+}
+
 async function generateImage(rawArgs) {
   const { flags } = parseFlags(rawArgs);
 
@@ -276,6 +306,8 @@ async function generateImage(rawArgs) {
   const model = flags.model || flags['model-id'] || undefined;
   const style = flags.style || 'photorealistic';
   const aspectRatio = flags['aspect-ratio'] || flags.aspect || flags.ratio || '1:1';
+  const responseFormat = flags['response-format'] || flags.format || 'url';
+  const referenceImages = parseReferenceImages(flags);
   let imageBase64 = null;
 
   if (flags.image) {
@@ -297,6 +329,8 @@ async function generateImage(rawArgs) {
     style,
     aspectRatio,
     imageBase64,
+    referenceImages,
+    responseFormat,
   };
 
   const resData = await apiRequest('/playground/generate', 'POST', payload, true);
@@ -350,6 +384,8 @@ async function editImage(rawArgs) {
   const model = flags.model || flags['model-id'] || undefined;
   const style = flags.style || 'photorealistic';
   const aspectRatio = flags['aspect-ratio'] || flags.aspect || flags.ratio || '1:1';
+  const responseFormat = flags['response-format'] || flags.format || 'url';
+  const referenceImages = parseReferenceImages(flags);
   let imageBase64 = null;
 
   const imgPath = flags.image;
@@ -371,6 +407,8 @@ async function editImage(rawArgs) {
     aspectRatio,
     imageBase64,
     image: flags.image,
+    referenceImages,
+    responseFormat,
   };
 
   const resData = await apiRequest('/playground/edit', 'POST', payload, true);

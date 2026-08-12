@@ -54,6 +54,8 @@ Only tools provided by ImageMCP Server are available. All commands return JSON f
 | "Check user plan / credits / info" | `./scripts/imagemcp.js user:info` |
 | "List available image models" | `./scripts/imagemcp.js models:list` |
 | "Generate image from prompt" | `./scripts/imagemcp.js generate --prompt "..." --model "google/gemini-2.5-flash-image" --aspect-ratio "16:9"` |
+| "Generate image with reference image(s)" | `./scripts/imagemcp.js generate --prompt "..." --ref ./ref1.png --ref https://example.com/ref2.jpg` |
+| "Request base64 instead of default Cloudflare R2 URL" | `./scripts/imagemcp.js generate --prompt "..." --response-format b64_json` |
 | "Generate transparent image PNG cutout" | `./scripts/imagemcp.js generate_transparent --prompt "Red sports car" --out ./car.png` |
 | "Run multiple requests in parallel (Multicall)" | `./scripts/imagemcp.js multicall ./batch_requests.json` |
 | "Generate vector SVG graphic" | `./scripts/imagemcp.js text_to_svg --prompt "Minimalist rocket icon" --out ./icon.svg` |
@@ -63,6 +65,7 @@ Only tools provided by ImageMCP Server are available. All commands return JSON f
 | "Upscale image to 4K" | `./scripts/imagemcp.js upscale --image ./input.png --scale 4x --out 4k.png` |
 | "Compress image file size" | `./scripts/imagemcp.js compress --image ./input.png --quality 70 --format webp --out compressed.webp` |
 | "Convert image format" | `./scripts/imagemcp.js convert --image ./input.png --format webp --out converted.webp` |
+
 
 ---
 
